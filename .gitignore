@@ -1,0 +1,31 @@
+# Dependencies
+node_modules/
+**/node_modules/
+
+# Build and test output
+dist/
+**/dist/
+coverage/
+**/coverage/
+.vite/
+**/.vite/
+.vite-temp/
+**/.vite-temp/
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+
+# Runtime logs and generated local data
+logs/
+**/logs/
+*.log
+*.jsonl
+.codex_pdf_preview/
+
+# OS and editor files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

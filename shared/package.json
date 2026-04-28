@@ -1,0 +1,16 @@
+{
+  "name": "@bacontrainer/shared",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.js",
+    "./providers": "./src/providers.js",
+    "./scenarios": "./src/scenarios.js",
+    "./simulator": "./src/simulator.js"
+  },
+  "scripts": {
+    "build": "node -e \"console.log('shared package is source-only; no build step required.')\"",
+    "test": "node -e \"console.log('No shared tests yet.')\""
+  }
+}

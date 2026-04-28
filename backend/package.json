@@ -1,0 +1,22 @@
+{
+  "name": "@bacontrainer/backend",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch src/index.js",
+    "start": "node src/index.js",
+    "build": "node -e \"console.log('backend is plain JavaScript; no build step required.')\"",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@bacontrainer/shared": "file:../shared",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2"
+  },
+  "devDependencies": {
+    "supertest": "^7.1.1",
+    "vitest": "^3.2.4"
+  }
+}
