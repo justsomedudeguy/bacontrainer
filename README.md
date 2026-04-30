@@ -1,6 +1,7 @@
 # Bacontrainer
 <img width="1254" height="1254" alt="image" src="https://github.com/user-attachments/assets/aa14c812-0f80-4e79-82c6-c2246ebfdbcb" />
 
+This application is now live at https://bacontrainer.gregkristy.com
 
 Bacontrainer is a text-first educational app for practicing police-encounter conversations and then reviewing a separate legal explainer. The current MVP is focused on Fourth Amendment scenarios and includes an independent legal research workspace that can ground answers in CourtListener results when sources are available.
 
