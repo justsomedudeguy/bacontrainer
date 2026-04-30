@@ -239,7 +239,9 @@ Supported provider IDs:
 Provider requirements:
 
 - OpenAI-compatible requires an API key unless one is already configured server-side.
-- Gemini requires an API key unless one is already configured server-side.
+- Gemini uses a browser-entered Gemini API key when one is present.
+- Gemini uses Vertex AI as the server default when `GEMINI_VERTEX_PROJECT` or `GOOGLE_CLOUD_PROJECT` identifies the Vertex AI project.
+- Gemini uses server-side `GEMINI_API_KEY` only as a fallback when Vertex project configuration is absent.
 - Ollama does not require an API key by default.
 
 Provider runtime configuration shape:
@@ -361,8 +363,10 @@ Client-side persistence stores:
 - active workspace
 - selected scenario ID
 - selected provider ID
+- server default provider ID
 - provider config
 - provider model selections
+- provider default snapshots used to migrate stale browser defaults
 - generated scenarios
 - CourtListener browser token override
 
@@ -378,6 +382,7 @@ Backend behavior:
 - domain errors use `HttpError`
 - error middleware returns JSON with `error` and optional `details`
 - missing provider API keys return HTTP 400 with `Enter an API key to continue.`
+- missing Vertex AI project configuration for Gemini returns HTTP 400
 - upstream CourtListener failures are translated to a backend 502 with classified retrieval status
 
 Frontend behavior:
@@ -406,6 +411,12 @@ Supported variables:
 - `GEMINI_BASE_URL`
 - `GEMINI_API_KEY`
 - `GEMINI_MODEL`
+- `GEMINI_VERTEX_PROJECT`
+- `GEMINI_VERTEX_LOCATION`
+
+`GEMINI_VERTEX_PROJECT` falls back to common Google Cloud project environment variables, including `GOOGLE_CLOUD_PROJECT`, `GCLOUD_PROJECT`, `GCP_PROJECT`, and `PROJECT_ID`.
+
+The default Gemini model is `gemini-2.5-flash-lite`, which is the low-cost Vertex-supported Flash model used when no explicit `GEMINI_MODEL` is set.
 
 ## Current Constraints And Risks
 

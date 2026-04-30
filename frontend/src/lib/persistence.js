@@ -4,8 +4,11 @@ const EMPTY_STATE = {
   activeWorkspace: 'simulator',
   selectedScenarioId: '',
   selectedProviderId: '',
+  serverDefaultProviderId: '',
+  selectedProviderUserSet: false,
   providerConfigs: {},
   providerModels: {},
+  providerDefaults: {},
   inventedScenarios: [],
   courtlistenerConfig: {
     apiToken: ''

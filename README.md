@@ -106,6 +106,10 @@ You can provide API keys in either place:
 - server-side through `.env`
 - client-side through the browser UI
 
+For Gemini on Cloud Run or local ADC, set `DEFAULT_PROVIDER=gemini`, `GEMINI_MODEL=gemini-2.5-flash-lite`, and either `GEMINI_VERTEX_PROJECT` or `GOOGLE_CLOUD_PROJECT`. When Vertex project configuration exists, the server default uses Vertex AI through IAM. A browser-entered Gemini API key still overrides that default for the current browser.
+
+`gemini-2.5-flash-lite` is the default low-cost Vertex-supported Flash model for this project. Gemini 1.5 Flash model IDs are no longer a reliable Vertex default because retired or unavailable model IDs return `404 Not Found` from Vertex.
+
 Browser-entered keys and generated scenarios are stored locally in browser storage on the current machine.
 
 ### Run
@@ -160,8 +164,34 @@ The frontend produces a Vite build. The backend and shared packages are source-o
 | `OLLAMA_BASE_URL` | Default Ollama base URL |
 | `OLLAMA_MODEL` | Default Ollama model |
 | `GEMINI_BASE_URL` | Default Gemini API base URL |
-| `GEMINI_API_KEY` | Optional server-side Gemini API key |
+| `GEMINI_API_KEY` | Optional server-side Gemini API key fallback when Vertex project config is absent |
 | `GEMINI_MODEL` | Default Gemini model |
+| `GEMINI_VERTEX_PROJECT` | Vertex AI project for Gemini when no API key is set |
+| `GEMINI_VERTEX_LOCATION` | Vertex AI location for Gemini when no API key is set |
+
+Gemini auth precedence is browser-entered Gemini API key, then Vertex AI server default, then server-side `GEMINI_API_KEY` fallback.
+
+CourtListener auth precedence is browser-entered CourtListener token, then server-side `COURTLISTENER_API_TOKEN`. Simulator roleplay turns do not call CourtListener; CourtListener is used when generating legal analysis or answering legal research questions. Retrieval calls are logged as `case_retrieval_call` events in the redacted usage log.
+
+## Cloud Run Deployment
+
+Cloud Run should be treated as an immutable deployment target. Do not rely on running `git pull` inside a live Cloud Run instance; changes made inside an instance are not a durable source sync and will not update future revisions.
+
+The supported flow is:
+
+1. Commit and push source changes to GitHub.
+2. Deploy a new Cloud Run revision from the pushed source or from the local checkout.
+3. Keep runtime configuration in Cloud Run environment variables and Secret Manager, not in source edits.
+
+For this app, the important Cloud Run environment values are:
+
+- `DEFAULT_PROVIDER=gemini`
+- `GEMINI_MODEL=gemini-2.5-flash-lite`
+- `GEMINI_VERTEX_PROJECT=<google-cloud-project-id>`
+- `GEMINI_VERTEX_LOCATION=us-central1`
+- `COURTLISTENER_API_TOKEN=<secret or env var>`
+
+The Cloud Run service identity needs Vertex AI access, such as `roles/aiplatform.user`, for Gemini Vertex inference. Local development should use Application Default Credentials, preferably by impersonating the same service account used by Cloud Run.
 
 ## API Overview
 

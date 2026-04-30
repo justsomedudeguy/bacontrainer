@@ -70,9 +70,9 @@ const bootstrapFixture = {
       description: 'Server-side Gemini',
       builtIn: true,
       configured: false,
-      defaultModel: 'gemini-2.5-flash',
+      defaultModel: 'gemini-2.5-flash-lite',
       defaultBaseUrl: 'https://generativelanguage.googleapis.com',
-      requiresApiKey: true,
+      requiresApiKey: false,
       supportsCustomBaseUrl: false
     }
   ],
@@ -95,9 +95,9 @@ const bootstrapFixture = {
     },
     gemini: {
       configured: false,
-      defaultModel: 'gemini-2.5-flash',
+      defaultModel: 'gemini-2.5-flash-lite',
       defaultBaseUrl: 'https://generativelanguage.googleapis.com',
-      requiresApiKey: true,
+      requiresApiKey: false,
       supportsCustomBaseUrl: false,
       summary: 'Default base URL: https://generativelanguage.googleapis.com'
     }
@@ -329,6 +329,7 @@ describe('App', () => {
         activeWorkspace: 'simulator',
         selectedScenarioId: 'traffic-stop-backpack-search',
         selectedProviderId: 'openai-compatible',
+        serverDefaultProviderId: 'gemini',
         providerConfigs: {
           'openai-compatible': {
             baseUrl: 'https://api.openai.com/v1',
@@ -482,10 +483,13 @@ describe('App', () => {
       screen.queryByText(/Enter an API key to continue with this provider/i)
     ).not.toBeInTheDocument();
     expect(
-      await screen.findAllByText(/Server default key: available/i)
+      await screen.findAllByText(/Server default auth: available/i)
     ).toHaveLength(2);
     expect(
-      screen.getAllByText(/This browser can leave the API key field blank/i)
+      screen.getAllByText(/This browser can leave the API key field blank and use the server default auth/i)
+    ).toHaveLength(2);
+    expect(
+      screen.getAllByPlaceholderText(/Optional Gemini API key override/i)
     ).toHaveLength(2);
 
     fireEvent.change(textarea, {
@@ -499,6 +503,66 @@ describe('App', () => {
       expect(submitTurn).toHaveBeenCalledWith(
         expect.objectContaining({
           providerId: 'gemini',
+          providerConfig: expect.objectContaining({
+            apiKey: ''
+          })
+        })
+      );
+    });
+  });
+
+  it('prefers the current server default provider over an old persisted provider selection', async () => {
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        activeWorkspace: 'simulator',
+        selectedScenarioId: 'traffic-stop-backpack-search',
+        selectedProviderId: 'openai-compatible',
+        providerConfigs: {
+          'openai-compatible': {
+            baseUrl: 'https://api.openai.com/v1',
+            apiKey: ''
+          }
+        },
+        providerModels: {
+          'openai-compatible': 'gpt-4.1-mini',
+          gemini: 'gemini-1.5-flash'
+        },
+        inventedScenarios: [],
+        courtlistenerConfig: {
+          apiToken: ''
+        }
+      })
+    );
+    fetchBootstrap.mockResolvedValueOnce({
+      ...bootstrapFixture,
+      defaultProviderId: 'gemini',
+      providers: bootstrapFixture.providers.map((provider) =>
+        provider.id === 'gemini'
+          ? {
+              ...provider,
+              configured: true,
+              defaultModel: 'gemini-2.5-flash-lite'
+            }
+          : provider
+      ),
+      providerStatus: {
+        ...bootstrapFixture.providerStatus,
+        gemini: {
+          ...bootstrapFixture.providerStatus.gemini,
+          configured: true,
+          defaultModel: 'gemini-2.5-flash-lite'
+        }
+      }
+    });
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(resetScenario).toHaveBeenCalledWith(
+        expect.objectContaining({
+          providerId: 'gemini',
+          model: 'gemini-2.5-flash-lite',
           providerConfig: expect.objectContaining({
             apiKey: ''
           })

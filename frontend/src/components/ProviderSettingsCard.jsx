@@ -18,8 +18,10 @@ export function ProviderSettingsCard({
   const apiKeyLabel = selectedProvider?.requiresApiKey ? 'API Key' : 'API Key (Optional)';
   const selectedProviderConfigured =
     Boolean(selectedProvider?.configured) || Boolean(selectedProviderStatus?.configured);
+  const isGeminiProvider = selectedProvider?.id === 'gemini';
+  const usesServerDefaultAuth = selectedProviderConfigured;
   const usesServerDefaultKey =
-    Boolean(selectedProvider?.requiresApiKey) && selectedProviderConfigured;
+    Boolean(selectedProvider?.requiresApiKey) && usesServerDefaultAuth;
 
   return (
     <div className="rounded-[28px] border border-black/10 bg-white/80 p-5 shadow-card backdrop-blur">
@@ -82,8 +84,10 @@ export function ProviderSettingsCard({
             onChange={(event) => onProviderConfigChange('apiKey', event.target.value)}
             type="password"
             placeholder={
-              usesServerDefaultKey
-                ? 'Optional override for this browser'
+              isGeminiProvider && usesServerDefaultAuth
+                ? 'Optional Gemini API key override'
+                : usesServerDefaultKey
+                ? 'Optional API key override for this browser'
                 : selectedProvider?.requiresApiKey
                 ? 'Paste an API key to continue'
                 : 'Optional API key for compatible gateways'
@@ -92,8 +96,8 @@ export function ProviderSettingsCard({
             disabled={disabled}
           />
           <p className="mt-2 text-xs leading-6 text-ink/65">
-            {usesServerDefaultKey
-              ? 'This browser can leave the API key field blank and use the server default key.'
+            {usesServerDefaultAuth
+              ? 'This browser can leave the API key field blank and use the server default auth.'
               : 'Browser-entered keys are stored locally in this browser so they persist across reloads until you clear them.'}
           </p>
         </label>
@@ -103,7 +107,7 @@ export function ProviderSettingsCard({
         <p className="font-medium text-ink">Selected provider notes</p>
         <p className="mt-2">{selectedProviderStatus?.summary || 'Provider status unavailable.'}</p>
         <p className="mt-2">
-          Server default key: {selectedProviderConfigured ? 'available' : 'not set'}
+          Server default auth: {selectedProviderConfigured ? 'available' : 'not set'}
         </p>
         <p className="mt-2">
           Default model: {selectedProviderStatus?.defaultModel || 'n/a'}

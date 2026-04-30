@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
+  buildProviderDefaults,
   buildInitialProviderConfigs,
-  buildInitialProviderModels
+  buildInitialProviderModels,
+  resolveInitialProviderId
 } from './providerState.js';
 
 const providers = [
@@ -13,7 +15,12 @@ const providers = [
   {
     id: 'gemini',
     defaultBaseUrl: 'https://generativelanguage.googleapis.com',
-    defaultModel: 'gemini-2.5-flash'
+    defaultModel: 'gemini-2.5-flash-lite'
+  },
+  {
+    id: 'ollama',
+    defaultBaseUrl: 'http://localhost:11434',
+    defaultModel: 'llama3.2'
   }
 ];
 
@@ -33,5 +40,49 @@ describe('provider state', () => {
         'openai-compatible': 'gpt-4.1-mini'
       })['openai-compatible']
     ).toBe('openrouter/free');
+  });
+
+  it('migrates a persisted model that matched the previous server default', () => {
+    expect(
+      buildInitialProviderModels(
+        providers,
+        {
+          gemini: 'gemini-1.5-flash'
+        },
+        {
+          gemini: {
+            defaultBaseUrl: 'https://generativelanguage.googleapis.com',
+            defaultModel: 'gemini-1.5-flash'
+          }
+        }
+      ).gemini
+    ).toBe('gemini-2.5-flash-lite');
+  });
+
+  it('migrates the retired Gemini 1.5 Flash default even without a saved default snapshot', () => {
+    expect(
+      buildInitialProviderModels(providers, {
+        gemini: 'gemini-1.5-flash'
+      }).gemini
+    ).toBe('gemini-2.5-flash-lite');
+  });
+
+  it('uses the current server default provider when persisted state predates explicit provider tracking', () => {
+    expect(
+      resolveInitialProviderId(providers, 'openai-compatible', 'gemini', false)
+    ).toBe('gemini');
+  });
+
+  it('preserves an explicit provider choice', () => {
+    expect(
+      resolveInitialProviderId(providers, 'ollama', 'gemini', true)
+    ).toBe('ollama');
+  });
+
+  it('snapshots provider defaults for future migrations', () => {
+    expect(buildProviderDefaults(providers).gemini).toEqual({
+      defaultBaseUrl: 'https://generativelanguage.googleapis.com',
+      defaultModel: 'gemini-2.5-flash-lite'
+    });
   });
 });

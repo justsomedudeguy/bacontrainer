@@ -37,7 +37,7 @@ export const PROVIDER_OPTIONS = [
   {
     id: PROVIDER_IDS.GEMINI,
     label: 'Gemini',
-    description: 'Gemini backend integration that uses an API key instead of Google OAuth.',
+    description: 'Gemini backend integration that can use Vertex AI or a Gemini API key.',
     builtIn: true
   }
 ];

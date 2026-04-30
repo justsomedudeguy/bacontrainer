@@ -6,7 +6,8 @@ describe('provider registry', () => {
   const config = createConfig({
     DEFAULT_PROVIDER: 'openai-compatible',
     OPENAI_COMPATIBLE_API_KEY: '',
-    GEMINI_API_KEY: ''
+    GEMINI_API_KEY: '',
+    GEMINI_VERTEX_PROJECT: 'test-project'
   });
 
   it('returns all known provider adapters', () => {
@@ -31,7 +32,8 @@ describe('provider registry', () => {
     const status = getProviderStatus(config);
 
     expect(status['openai-compatible'].summary).toContain('Default base URL');
-    expect(status['gemini'].configured).toBe(false);
-    expect(status['gemini'].requiresApiKey).toBe(true);
+    expect(status['gemini'].configured).toBe(true);
+    expect(status['gemini'].requiresApiKey).toBe(false);
+    expect(status['gemini'].summary).toContain('Vertex AI project');
   });
 });

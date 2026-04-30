@@ -559,6 +559,7 @@ describe('backend app', () => {
         DEFAULT_PROVIDER: 'gemini',
         OPENAI_COMPATIBLE_API_KEY: '',
         GEMINI_API_KEY: 'server-gemini-key',
+        GEMINI_VERTEX_PROJECT: '',
         COURTLISTENER_API_TOKEN: 'server-courtlistener-token'
       })
     });

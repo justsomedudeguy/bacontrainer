@@ -4,14 +4,13 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "node --watch src/index.js",
+    "dev": "node --watch-path=src src/index.js",
     "start": "node src/index.js",
     "build": "node -e \"console.log('backend is plain JavaScript; no build step required.')\"",
     "test": "vitest run"
   },
   "dependencies": {
     "@bacontrainer/shared": "file:../shared",
-    "@google-ai/generativelanguage": "^3.7.0",
     "@google-cloud/vertexai": "^1.12.0",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",

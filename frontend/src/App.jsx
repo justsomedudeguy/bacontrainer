@@ -10,8 +10,10 @@ import { useSimulatorWorkspace } from './features/simulator/useSimulatorWorkspac
 import { fetchBootstrap } from './lib/api.js';
 import { loadPersistentState, savePersistentState } from './lib/persistence.js';
 import {
+  buildProviderDefaults,
   buildInitialProviderConfigs,
-  buildInitialProviderModels
+  buildInitialProviderModels,
+  resolveInitialProviderId
 } from './lib/providerState.js';
 
 function toPersistedScenarioSummary(scenario) {
@@ -35,11 +37,20 @@ export default function App() {
   const [selectedProviderId, setSelectedProviderId] = useState(
     persistedState.selectedProviderId || ''
   );
+  const [serverDefaultProviderId, setServerDefaultProviderId] = useState(
+    persistedState.serverDefaultProviderId || ''
+  );
+  const [selectedProviderUserSet, setSelectedProviderUserSet] = useState(
+    Boolean(persistedState.selectedProviderUserSet)
+  );
   const [providerConfigs, setProviderConfigs] = useState(
     persistedState.providerConfigs || {}
   );
   const [providerModels, setProviderModels] = useState(
     persistedState.providerModels || {}
+  );
+  const [providerDefaults, setProviderDefaults] = useState(
+    persistedState.providerDefaults || {}
   );
   const [inventedScenarios, setInventedScenarios] = useState(
     persistedState.inventedScenarios || []
@@ -65,19 +76,25 @@ export default function App() {
           ...nextBootstrap.scenarios,
           ...inventedScenarios.map(toPersistedScenarioSummary)
         ];
+        const nextProviderDefaults = buildProviderDefaults(nextBootstrap.providers);
         const nextProviderConfigs = buildInitialProviderConfigs(
           nextBootstrap.providers,
-          providerConfigs
+          providerConfigs,
+          providerDefaults
         );
         const nextProviderModels = buildInitialProviderModels(
           nextBootstrap.providers,
-          providerModels
+          providerModels,
+          providerDefaults
         );
-        const nextSelectedProviderId = nextBootstrap.providers.some(
-          (provider) => provider.id === selectedProviderId
-        )
-          ? selectedProviderId
-          : nextBootstrap.defaultProviderId;
+        const nextSelectedProviderId = resolveInitialProviderId(
+          nextBootstrap.providers,
+          selectedProviderId,
+          nextBootstrap.defaultProviderId,
+          selectedProviderUserSet
+        );
+        const nextSelectedProviderUserSet =
+          selectedProviderUserSet && nextSelectedProviderId === selectedProviderId;
         const nextSelectedScenarioId = scenarioOptions.some(
           (scenario) => scenario.id === selectedScenarioId
         )
@@ -86,9 +103,12 @@ export default function App() {
 
         setBootstrap(nextBootstrap);
         setSelectedProviderId(nextSelectedProviderId);
+        setSelectedProviderUserSet(nextSelectedProviderUserSet);
         setSelectedScenarioId(nextSelectedScenarioId);
+        setServerDefaultProviderId(nextBootstrap.defaultProviderId);
         setProviderConfigs(nextProviderConfigs);
         setProviderModels(nextProviderModels);
+        setProviderDefaults(nextProviderDefaults);
         setBootstrapError('');
       } catch (error) {
         if (!isCancelled) {
@@ -109,8 +129,11 @@ export default function App() {
       activeWorkspace,
       selectedScenarioId,
       selectedProviderId,
+      serverDefaultProviderId,
+      selectedProviderUserSet,
       providerConfigs,
       providerModels,
+      providerDefaults,
       inventedScenarios,
       courtlistenerConfig
     });
@@ -119,9 +142,12 @@ export default function App() {
     courtlistenerConfig,
     inventedScenarios,
     providerConfigs,
+    providerDefaults,
     providerModels,
     selectedProviderId,
-    selectedScenarioId
+    selectedProviderUserSet,
+    selectedScenarioId,
+    serverDefaultProviderId
   ]);
 
   const providers = bootstrap?.providers || [];
@@ -143,6 +169,7 @@ export default function App() {
 
   function handleProviderChange(nextProviderId) {
     setSelectedProviderId(nextProviderId);
+    setSelectedProviderUserSet(true);
     setProviderModels((currentValue) => ({
       ...currentValue,
       [nextProviderId]:

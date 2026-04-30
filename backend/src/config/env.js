@@ -47,7 +47,20 @@ export function createConfig(overrides = {}) {
         baseUrl:
           source.GEMINI_BASE_URL ?? 'https://generativelanguage.googleapis.com',
         apiKey: source.GEMINI_API_KEY ?? '',
-        defaultModel: source.GEMINI_MODEL ?? 'gemini-1.5-flash'
+        defaultModel: source.GEMINI_MODEL ?? 'gemini-2.5-flash-lite',
+        vertexProject:
+          source.GEMINI_VERTEX_PROJECT ??
+          source.GOOGLE_CLOUD_PROJECT ??
+          source.GCLOUD_PROJECT ??
+          source.GCP_PROJECT ??
+          source.PROJECT_ID ??
+          '',
+        vertexLocation:
+          source.GEMINI_VERTEX_LOCATION ??
+          source.GOOGLE_CLOUD_LOCATION ??
+          source.GCP_REGION ??
+          source.CLOUD_RUN_REGION ??
+          'us-central1'
       }
     }
   };
