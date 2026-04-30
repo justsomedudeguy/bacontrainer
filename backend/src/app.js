@@ -1,3 +1,5 @@
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import cors from 'cors';
 import express from 'express';
 import env from './config/env.js';
@@ -53,6 +55,18 @@ export function createApp({ config = env, usageLogger = null } = {}) {
   app.use('/api', createBootstrapRouter({ simulatorService, legalResearchService }));
   app.use('/api', createSimulatorRouter({ simulatorService, analysisJobService }));
   app.use('/api', createChatRouter({ legalResearchService }));
+
+  // Serve static files from frontend/dist in production
+  if (config.nodeEnv === 'production') {
+    const __dirname = path.dirname(fileURLToPath(import.meta.url));
+    const distPath = path.resolve(__dirname, '../../frontend/dist');
+    app.use(express.static(distPath));
+    app.get('*', (req, res) => {
+      if (!req.path.startsWith('/api')) {
+        res.sendFile(path.join(distPath, 'index.html'));
+      }
+    });
+  }
 
   app.use((error, _request, response, _next) => {
     const statusCode = error instanceof HttpError ? error.statusCode : 500;

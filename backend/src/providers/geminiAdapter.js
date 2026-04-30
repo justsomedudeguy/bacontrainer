@@ -1,8 +1,10 @@
+import { VertexAI } from '@google-cloud/vertexai';
+import GoogleGenerativeAIModule from '@google-ai/generativelanguage';
+const { GoogleGenerativeAI } = GoogleGenerativeAIModule;
 import { PROVIDER_IDS } from '@bacontrainer/shared';
 import {
   cleanOptionalString,
-  joinContentParts,
-  postJson
+  joinContentParts
 } from './requestUtils.js';
 import { HttpError } from '../utils/httpError.js';
 
@@ -49,7 +51,7 @@ function resolveTemperature(purpose) {
 export const geminiAdapter = {
   id: PROVIDER_IDS.GEMINI,
   label: 'Gemini',
-  requiresApiKey: true,
+  requiresApiKey: false,
   supportsCustomBaseUrl: false,
   getDefaultModel(config) {
     return config.providers[this.id].defaultModel;
@@ -60,8 +62,8 @@ export const geminiAdapter = {
   getStatus(config) {
     const providerConfig = config.providers[this.id];
     return {
-      configured: Boolean(providerConfig.apiKey),
-      summary: `Default base URL: ${providerConfig.baseUrl}`
+      configured: true,
+      summary: `Default model: ${providerConfig.defaultModel}`
     };
   },
   normalizeRequest(request, config) {
@@ -77,7 +79,7 @@ export const geminiAdapter = {
       providerId: this.id,
       purpose: request.purpose,
       model: resolvedModel,
-      endpoint: `${runtimeConfig.baseUrl.replace(/\/$/, '')}/v1beta/models/${resolvedModel}:generateContent`,
+      endpoint: resolvedModel, // For SDK, we use model name
       systemPrompt: request.systemPrompt,
       messages: toGeminiMessages(request.transcript, request.purpose),
       runtimeConfig,
@@ -88,36 +90,52 @@ export const geminiAdapter = {
       }
     };
   },
-  async generateText(request) {
-    const payload = await postJson(request.endpoint, {
-      providerLabel: this.label,
-      headers: {
-        'x-goog-api-key': request.runtimeConfig?.apiKey || ''
-      },
-      body: {
-        systemInstruction: {
-          parts: [
-            {
-              text: request.systemPrompt
-            }
-          ]
-        },
-        contents: request.messages,
-        generationConfig: {
-          temperature: resolveTemperature(request.purpose)
-        }
+  async generateText(request, config) {
+    const apiKey = request.runtimeConfig?.apiKey;
+    const modelName = request.model;
+
+    try {
+      if (apiKey) {
+        // CASE A: User provided their own key (AI Studio path)
+        const genAI = new GoogleGenerativeAI(apiKey);
+        const model = genAI.getGenerativeModel({
+          model: modelName,
+          systemInstruction: request.systemPrompt
+        });
+
+        const result = await model.generateContent({
+          contents: request.messages,
+          generationConfig: {
+            temperature: resolveTemperature(request.purpose)
+          }
+        });
+
+        const text = result.response.text();
+        return { text, raw: result.response };
+      } else {
+        // CASE B: User left key blank (Vertex AI path - Uses GCP Credits)
+        const vertexAI = new VertexAI({
+          project: 'orbital-lantern-348309',
+          location: 'us-central1'
+        });
+        const model = vertexAI.getGenerativeModel({
+          model: modelName,
+          systemInstruction: request.systemPrompt
+        });
+
+        const result = await model.generateContent({
+          contents: request.messages,
+          generationConfig: {
+            temperature: resolveTemperature(request.purpose)
+          }
+        });
+
+        const response = await result.response;
+        const text = response.candidates[0].content.parts[0].text;
+        return { text, raw: response };
       }
-    });
-
-    const text = joinContentParts(payload?.candidates?.[0]?.content?.parts);
-
-    if (!text) {
-      throw new HttpError(502, 'Gemini returned an empty response.');
+    } catch (error) {
+      throw new HttpError(error.statusCode || 500, `Gemini Error: ${error.message}`);
     }
-
-    return {
-      text,
-      raw: payload
-    };
   }
 };

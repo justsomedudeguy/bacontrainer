@@ -47,7 +47,7 @@ export function createConfig(overrides = {}) {
         baseUrl:
           source.GEMINI_BASE_URL ?? 'https://generativelanguage.googleapis.com',
         apiKey: source.GEMINI_API_KEY ?? '',
-        defaultModel: source.GEMINI_MODEL ?? 'gemini-2.5-flash'
+        defaultModel: source.GEMINI_MODEL ?? 'gemini-1.5-flash'
       }
     }
   };
