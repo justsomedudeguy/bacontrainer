@@ -8,23 +8,24 @@ This project is for legal literacy and simulation. It does not provide legal adv
 
 ## What The App Does
 
-- Runs live scenario roleplay in the browser.
-- Makes two model calls for each simulator turn:
-  - an in-character police response
-  - a separate legal analysis response
-- Pauses after each completed turn until the user clicks `Next`.
+- Runs live police-encounter roleplay in the browser.
+- Lets the user send repeated roleplay turns before asking for legal analysis.
+- Provides a separate `Legal Analysis` action that runs outside the roleplay flow.
+- Grounds simulator analysis and research answers in CourtListener when retrieval succeeds.
+- Renders retrieved CourtListener metadata and source links with assistant messages.
 - Resets into a fresh opening scene for the selected scenario.
 - Supports built-in scenarios plus LLM-generated scenarios created from a prompt idea.
 - Includes a separate legal research chat workspace.
-- Grounds research answers in CourtListener when retrieval succeeds.
 - Lets the user switch providers, models, base URLs, and API keys from the UI.
-- Persists browser-entered provider settings, API keys, selected workspace, and generated scenarios locally.
+- Persists browser-entered provider settings, API keys, selected workspace, CourtListener token override, and generated scenarios locally.
+- Writes local redacted JSONL usage logs for user queries, provider calls, CourtListener retrieval, and generated responses.
 
 ## Current MVP Scope
 
 - The simulator is intentionally narrow and centered on police-overreach teaching scenarios.
 - Built-in scenarios are hardcoded in the backend catalog.
 - Generated scenarios are returned to the client and stored client-side.
+- Legal-analysis jobs are short-lived in-memory backend jobs.
 - There is no database, auth layer, CMS, vector store, or voice pipeline in the current version.
 
 ## Built-In Scenarios
@@ -38,10 +39,11 @@ This project is for legal literacy and simulation. It does not provide legal adv
 
 1. The frontend calls `POST /api/simulator/reset` to start a scenario.
 2. The backend returns a transcript with a system reset message and the opening scenario message.
-3. On each turn, the frontend sends the current transcript plus the user's response to `POST /api/simulator/turn`.
-4. The backend appends the user turn, requests an in-character reply from the selected model, then requests a second out-of-character analysis response.
-5. Analysis messages stay visible in the transcript, but they are filtered out of later roleplay prompts so the scenario call stays in character.
-6. The UI blocks additional turns until the user clicks `Next`.
+3. On each roleplay turn, the frontend sends the current transcript plus the user's response to `POST /api/simulator/turn`.
+4. The backend appends the user turn, filters out prior analysis messages, and requests an in-character reply from the selected model.
+5. When the user clicks `Legal Analysis`, the frontend starts an async job with `POST /api/simulator/analyze-jobs` and polls the returned status URL.
+6. The analysis job queries CourtListener for relevant authority, asks the selected model for a structured explainer, and appends the result on the `analysis` transcript channel.
+7. Analysis messages stay visible in the transcript, but they are filtered out of later roleplay prompts so the scenario call stays in character.
 
 ### Research Workspace
 
@@ -148,6 +150,7 @@ The frontend produces a Vite build. The backend and shared packages are source-o
 | `PORT` | Backend port |
 | `FRONTEND_ORIGIN` | Allowed frontend origin for CORS |
 | `APP_MODE` | Runtime label displayed in the UI |
+| `USAGE_LOG_DIRECTORY` | Directory for redacted local usage JSONL logs |
 | `DEFAULT_PROVIDER` | Initial provider shown in the UI |
 | `COURTLISTENER_BASE_URL` | Base URL for CourtListener search |
 | `COURTLISTENER_API_TOKEN` | Optional server-side CourtListener token |
@@ -167,7 +170,10 @@ The frontend produces a Vite build. The backend and shared packages are source-o
 | `GET` | `/api/health` | Health check |
 | `GET` | `/api/bootstrap` | Initial app state, providers, scenarios, CourtListener status |
 | `POST` | `/api/simulator/reset` | Start or restart a simulator transcript |
-| `POST` | `/api/simulator/turn` | Submit a simulator turn and get scenario + analysis replies |
+| `POST` | `/api/simulator/turn` | Submit a simulator roleplay turn and get the in-character reply |
+| `POST` | `/api/simulator/analyze` | Generate simulator legal analysis synchronously |
+| `POST` | `/api/simulator/analyze-jobs` | Start an async simulator legal-analysis job |
+| `GET` | `/api/simulator/analyze-jobs/:jobId` | Poll async legal-analysis job status and result |
 | `POST` | `/api/simulator/invent-scenario` | Generate a new scenario from a prompt idea |
 | `POST` | `/api/chat/reset` | Start a new legal research chat |
 | `POST` | `/api/chat/turn` | Submit a legal research question |
@@ -175,12 +181,16 @@ The frontend produces a Vite build. The backend and shared packages are source-o
 ## Key Source Files
 
 - `backend/src/services/SimulatorService.js`: simulator turn orchestration
+- `backend/src/services/AnalysisJobService.js`: in-memory async legal-analysis jobs
 - `backend/src/services/LegalResearchService.js`: research chat orchestration
 - `backend/src/services/CourtListenerService.js`: retrieval routing and source normalization
+- `backend/src/services/UsageLoggerService.js`: redacted local usage logging
 - `backend/src/scenarios/catalog.js`: built-in scenario catalog and generated scenario normalization
 - `frontend/src/App.jsx`: top-level app state, bootstrap, persistence, workspace switching
 - `frontend/src/features/simulator/useSimulatorWorkspace.js`: simulator workspace state and requests
 - `frontend/src/features/research/useLegalResearchWorkspace.js`: research workspace state and requests
+- `frontend/src/lib/api.js`: frontend API client and analysis job polling
+- `frontend/src/lib/providerState.js`: provider default and stale browser-state normalization
 - `shared/src/simulator.js`: transcript and API shape definitions
 
 ## Limitations
@@ -189,7 +199,9 @@ The frontend produces a Vite build. The backend and shared packages are source-o
 - Scenario generation relies on the selected model returning valid JSON.
 - Retrieval is based on lightweight intent routing and CourtListener availability.
 - Generated scenarios are not persisted on the server.
+- Async legal-analysis jobs are stored in memory and expire after a short retention window.
+- Usage logs are local JSONL files with obvious secret fields redacted; they are not a full audit or observability system.
 
 ## More Detail
 
-See [spec.md](spec.md) for the product spec, technical behavior, data model, and current design constraints.
+See [spec.md](spec.md) for the deeper product, architecture, and data-model reference. This README is the front-door summary of the current source snapshot.
