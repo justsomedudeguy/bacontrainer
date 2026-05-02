@@ -54,6 +54,14 @@ function formatSource(source, index) {
     lines.push(`Citations: ${source.citations.join('; ')}`);
   }
 
+  if (source.selectionRole) {
+    lines.push(`Selection role: ${source.selectionRole}`);
+  }
+
+  if (source.selectionReason) {
+    lines.push(`Selection reason: ${source.selectionReason}`);
+  }
+
   if (source.snippet) {
     lines.push(`Snippet: ${source.snippet}`);
   }
@@ -71,6 +79,7 @@ export function getLegalResearchSystemPrompt({ retrieval, sources }) {
     'If a source is a PACER docket or filing, describe it as case-file material rather than precedent.',
     'If a source is a judge profile or oral argument audio, describe it as background material rather than binding authority.',
     'Never claim that an unsupported proposition comes from CourtListener when it does not appear in the provided sources.',
+    'If the user names a case or citation that does not match the retrieved source title or citations, say that mismatch clearly before answering.',
     'If no reliable CourtListener sources were found, say that clearly and give a cautious general answer.',
     'When citing sources, refer to them by title and include the URL naturally in the response when helpful.'
   ];
@@ -78,8 +87,18 @@ export function getLegalResearchSystemPrompt({ retrieval, sources }) {
   const retrievalSummary = [
     `CourtListener retrieval status: ${retrieval.status}.`,
     `CourtListener query: ${retrieval.query}.`,
-    `CourtListener source types queried: ${retrieval.queriedTypes.join(', ') || 'none'}.`
-  ].join('\n');
+    `CourtListener source types queried: ${retrieval.queriedTypes.join(', ') || 'none'}.`,
+    retrieval.strategy ? `Retrieval strategy: ${retrieval.strategy}.` : '',
+    retrieval.issue ? `Inferred issue: ${retrieval.issue}.` : '',
+    retrieval.currentFocus ? `Current turn focus: ${retrieval.currentFocus}.` : '',
+    retrieval.jurisdictionMode ? `Jurisdiction mode: ${retrieval.jurisdictionMode}.` : '',
+    retrieval.jurisdictionNotes ? `Jurisdiction notes: ${retrieval.jurisdictionNotes}` : '',
+    retrieval.stateVariation
+      ? 'If the issue varies by state, explain the variation instead of forcing one national rule.'
+      : ''
+  ]
+    .filter(Boolean)
+    .join('\n');
 
   if (!sources.length) {
     return [...instructions, retrievalSummary, 'No CourtListener sources were available for this turn.'].join(

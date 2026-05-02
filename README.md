@@ -12,8 +12,8 @@ This project is for legal literacy and simulation. It does not provide legal adv
 - Runs live police-encounter roleplay in the browser.
 - Lets the user send repeated roleplay turns before asking for legal analysis.
 - Provides a separate `Legal Analysis` action that runs outside the roleplay flow.
-- Grounds simulator analysis and research answers in CourtListener when retrieval succeeds.
-- Renders retrieved CourtListener metadata and source links with assistant messages.
+- Grounds simulator analysis and research answers through a multi-step CourtListener retrieval workflow when retrieval succeeds.
+- Renders verified CourtListener source counts, research focus, and source links with assistant messages.
 - Resets into a fresh opening scene for the selected scenario.
 - Supports built-in scenarios plus LLM-generated scenarios created from a prompt idea.
 - Includes a separate legal research chat workspace.
@@ -43,15 +43,35 @@ This project is for legal literacy and simulation. It does not provide legal adv
 3. On each roleplay turn, the frontend sends the current transcript plus the user's response to `POST /api/simulator/turn`.
 4. The backend appends the user turn, filters out prior analysis messages, and requests an in-character reply from the selected model.
 5. When the user clicks `Legal Analysis`, the frontend starts an async job with `POST /api/simulator/analyze-jobs` and polls the returned status URL.
-6. The analysis job queries CourtListener for relevant authority, asks the selected model for a structured explainer, and appends the result on the `analysis` transcript channel.
+6. The analysis job asks the selected model to infer the current legal issue, retrieves and verifies candidate CourtListener cases, asks the selected model to choose up to five verified sources and prepare an analysis blueprint, and then generates a ruling-style explainer on the `analysis` transcript channel.
 7. Analysis messages stay visible in the transcript, but they are filtered out of later roleplay prompts so the scenario call stays in character.
 
 ### Research Workspace
 
 1. The frontend calls `POST /api/chat/reset` to initialize an independent research transcript.
-2. When the user asks a question, the backend routes the query across CourtListener source types based on simple intent rules.
+2. When the user asks a question, the backend runs the same issue-planning, CourtListener retrieval, and verified-source-selection workflow used by simulator analysis.
 3. CourtListener sources are normalized and attached to the assistant message metadata.
-4. The legal research prompt includes retrieval status and any returned sources before the model generates its answer.
+4. The legal research prompt includes retrieval status, inferred issue metadata, jurisdiction mode, and any returned sources before the model generates its answer.
+
+### Legal Retrieval Workflow
+
+Legal analysis and research chat use a three-step workflow:
+
+1. Issue planning: the selected provider/model identifies the current legal issue, with the latest roleplay turn or research question weighted most heavily.
+2. CourtListener retrieval: the backend builds an on-demand candidate corpus from exact CourtListener URLs, legal citations, candidate case names, keyword queries, jurisdiction filters, citation-count-oriented searches, citation-graph expansion, and semantic search only as a fallback.
+3. Source selection and answer generation: the selected provider/model chooses up to five verified CourtListener sources, usually one core landmark case plus narrowing, application, or remedy cases when available, and creates an internal analysis blueprint. Only verified sources are passed to the final answer prompt as grounded citations.
+
+Simulator legal analysis is organized like a compact ruling rather than a debate brief. The visible sections are `Bottom Line`, `Facts`, `Analysis`, and `Final Conclusion`. The facts section should present the roleplay record chronologically, and the analysis section should apply the law issue by issue to that record.
+
+For federal constitutional issues such as Fourth Amendment police scenarios, the workflow defaults toward federal and Supreme Court authority. For issues that vary by state, such as telephone-recording consent rules, the final answer should say that state law varies instead of forcing one national rule. If the user or scenario names a state, the workflow tries to retrieve verified authority from that state.
+
+The API still returns `meta.sources` on assistant messages. The frontend displays a verified source count, the research focus, compact source snippets, and links to full CourtListener opinions. Retrieval metadata can also include fields such as `issue`, `currentFocus`, `jurisdictionMode`, `stateVariation`, `strategy`, `analysisBlueprint`, and `candidateSourceCount`; internal search-strategy labels are retained as metadata rather than shown as user-facing text. LLM-suggested case names are treated only as search hints and are never displayed as sources unless CourtListener verifies them.
+
+### Hallucination and Source Verification
+
+Bacontrainer is educational software, not legal advice. Legal AI systems can still produce plausible but false authorities even when retrieval is involved; the Stanford/RegLab study [`Hallucination-Free?`](https://arxiv.org/abs/2405.20362) found that legal research tools reduced but did not eliminate hallucinations. Retrieval quality matters: [`LegalBench-RAG`](https://arxiv.org/abs/2408.10343) focuses on precise legal retrieval, and [`Legal RAG Bench`](https://arxiv.org/abs/2603.01710) reports that retrieval failures often set the ceiling for legal RAG performance. The NCSC guide [`A legal practitioner's guide to AI & hallucinations`](https://www.ncsc.org/resources-courts/legal-practitioners-guide-ai-hallucinations) recommends checking every citation and claim against primary sources.
+
+For that reason, Bacontrainer verifies CourtListener source links before showing them, avoids displaying unverified LLM-proposed case names as sources, and provides CourtListener URLs so users can inspect the cited authority directly.
 
 ## Stack
 
@@ -214,8 +234,11 @@ The Cloud Run service identity needs Vertex AI access, such as `roles/aiplatform
 - `backend/src/services/SimulatorService.js`: simulator turn orchestration
 - `backend/src/services/AnalysisJobService.js`: in-memory async legal-analysis jobs
 - `backend/src/services/LegalResearchService.js`: research chat orchestration
+- `backend/src/services/LegalRetrievalWorkflow.js`: shared issue-planning, CourtListener retrieval, and verified-source-selection pipeline
 - `backend/src/services/CourtListenerService.js`: retrieval routing and source normalization
 - `backend/src/services/UsageLoggerService.js`: redacted local usage logging
+- `backend/src/prompts/legalIssuePlanningPrompt.js`: JSON issue-planning prompt
+- `backend/src/prompts/legalSourceSelectionPrompt.js`: verified source-selection prompt
 - `backend/src/scenarios/catalog.js`: built-in scenario catalog and generated scenario normalization
 - `frontend/src/App.jsx`: top-level app state, bootstrap, persistence, workspace switching
 - `frontend/src/features/simulator/useSimulatorWorkspace.js`: simulator workspace state and requests
@@ -228,7 +251,7 @@ The Cloud Run service identity needs Vertex AI access, such as `roles/aiplatform
 
 - The scenario system is limited to the current Fourth Amendment-focused MVP.
 - Scenario generation relies on the selected model returning valid JSON.
-- Retrieval is based on lightweight intent routing and CourtListener availability.
+- Retrieval depends on CourtListener availability and the selected model's issue-planning and source-selection quality.
 - Generated scenarios are not persisted on the server.
 - Async legal-analysis jobs are stored in memory and expire after a short retention window.
 - Usage logs are local JSONL files with obvious secret fields redacted; they are not a full audit or observability system.

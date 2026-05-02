@@ -54,7 +54,7 @@ export class CourtListenerClient {
     this.apiToken = cleanOptionalString(apiToken);
   }
 
-  async search({ query, type, semantic = false, highlight = true, apiToken } = {}) {
+  async search({ query, type, semantic = false, highlight = true, orderBy, apiToken } = {}) {
     const endpoint = new URL('/api/rest/v4/search/', this.baseUrl);
 
     endpoint.searchParams.set('q', query ?? '');
@@ -71,21 +71,73 @@ export class CourtListenerClient {
       endpoint.searchParams.set('semantic', 'true');
     }
 
+    if (orderBy) {
+      endpoint.searchParams.set('order_by', orderBy);
+    }
+
+    return this.#requestJson(endpoint, {
+      method: 'GET',
+      apiToken
+    });
+  }
+
+  async getCluster({ clusterId, apiToken } = {}) {
+    const cleanedClusterId = cleanOptionalString(String(clusterId ?? ''));
+    const endpoint = new URL(
+      `/api/rest/v4/clusters/${encodeURIComponent(cleanedClusterId)}/`,
+      this.baseUrl
+    );
+
+    return this.#requestJson(endpoint, {
+      method: 'GET',
+      apiToken
+    });
+  }
+
+  async getApiResource({ resourceUrl, apiToken } = {}) {
+    const cleanedResourceUrl = cleanOptionalString(resourceUrl);
+    const endpoint = new URL(cleanedResourceUrl, this.baseUrl);
+
+    return this.#requestJson(endpoint, {
+      method: 'GET',
+      apiToken
+    });
+  }
+
+  async lookupCitations({ text, apiToken } = {}) {
+    const endpoint = new URL('/api/rest/v4/citation-lookup/', this.baseUrl);
+    const body = new URLSearchParams();
+
+    body.set('text', text ?? '');
+
+    return this.#requestJson(endpoint, {
+      method: 'POST',
+      apiToken,
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded'
+      },
+      body: body.toString()
+    });
+  }
+
+  async #requestJson(endpoint, { method, apiToken, headers = {}, body } = {}) {
     const resolvedToken = cleanOptionalString(apiToken) || this.apiToken;
-    const headers = {
-      Accept: 'application/json'
+    const requestHeaders = {
+      Accept: 'application/json',
+      ...headers
     };
 
     if (resolvedToken) {
-      headers.Authorization = `Token ${resolvedToken}`;
+      requestHeaders.Authorization = `Token ${resolvedToken}`;
     }
 
     let response;
 
     try {
       response = await fetch(endpoint, {
-        method: 'GET',
-        headers
+        method,
+        headers: requestHeaders,
+        ...(typeof body === 'string' ? { body } : {})
       });
     } catch {
       throw new HttpError(502, 'Unable to reach CourtListener.', {

@@ -8,6 +8,7 @@ import {
 import { getLegalResearchSystemPrompt } from '../prompts/legalResearchSystemPrompt.js';
 import { getProviderAdapter } from '../providers/registry.js';
 import { HttpError } from '../utils/httpError.js';
+import { LegalRetrievalWorkflow } from './LegalRetrievalWorkflow.js';
 
 const LEGAL_RESEARCH_CONTEXT = {
   id: 'legal-research',
@@ -51,6 +52,26 @@ function sanitizeTranscript(transcript) {
     }));
 }
 
+function buildRetrievalMeta(retrieval) {
+  return {
+    status: retrieval.status,
+    queriedTypes: retrieval.queriedTypes,
+    query: retrieval.query,
+    ...(retrieval.issue ? { issue: retrieval.issue } : {}),
+    ...(retrieval.currentFocus ? { currentFocus: retrieval.currentFocus } : {}),
+    ...(retrieval.jurisdictionMode ? { jurisdictionMode: retrieval.jurisdictionMode } : {}),
+    ...(typeof retrieval.stateVariation === 'boolean'
+      ? { stateVariation: retrieval.stateVariation }
+      : {}),
+    ...(retrieval.jurisdictionNotes ? { jurisdictionNotes: retrieval.jurisdictionNotes } : {}),
+    ...(retrieval.strategy ? { strategy: retrieval.strategy } : {}),
+    ...(retrieval.analysisBlueprint ? { analysisBlueprint: retrieval.analysisBlueprint } : {}),
+    ...(typeof retrieval.candidateSourceCount === 'number'
+      ? { candidateSourceCount: retrieval.candidateSourceCount }
+      : {})
+  };
+}
+
 function buildResetTranscript({ appMode, providerId, model }) {
   return [
     createTranscriptMessage({
@@ -86,6 +107,11 @@ export class LegalResearchService {
     this.config = config;
     this.courtListenerService = courtListenerService;
     this.usageLogger = usageLogger;
+    this.legalRetrievalWorkflow = new LegalRetrievalWorkflow({
+      config,
+      courtListenerService,
+      usageLogger
+    });
   }
 
   getCourtListenerStatus() {
@@ -142,9 +168,23 @@ export class LegalResearchService {
     });
 
     const nextTranscript = [...transcriptSoFar, userMessage];
-    const retrieval = await this.courtListenerService.retrieve({
+    const retrieval = await this.legalRetrievalWorkflow.retrieve({
+      adapter,
+      model: resolvedModel,
+      providerConfig: cleanedProviderConfig,
+      context: LEGAL_RESEARCH_CONTEXT,
+      transcript: nextTranscript,
       userInput,
-      courtlistenerConfig
+      courtlistenerConfig,
+      sourceTypes: ['o'],
+      workspace: 'legal-research',
+      generateText: ({ adapter: requestAdapter, request: workflowRequest }) =>
+        this.#generateTextWithUsageLogging({
+          adapter: requestAdapter,
+          request: workflowRequest
+        }),
+      assertProviderReady: (requestAdapter, workflowRequest) =>
+        this.#assertProviderReady(requestAdapter, workflowRequest)
     });
     const normalizedRequest = adapter.normalizeRequest(
       {
@@ -175,11 +215,7 @@ export class LegalResearchService {
         providerId: adapter.id,
         model: resolvedModel,
         purpose: 'legal-research',
-        retrieval: {
-          status: retrieval.status,
-          queriedTypes: retrieval.queriedTypes,
-          query: retrieval.query
-        },
+        retrieval: buildRetrievalMeta(retrieval),
         sources: retrieval.sources
       }
     });

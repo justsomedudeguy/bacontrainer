@@ -40,7 +40,7 @@ function roleLabel(message) {
 
 function renderInlineText(text, keyPrefix) {
   return text
-    .split(/(\*\*[^*]+\*\*)/g)
+    .split(/(\*\*[^*]+\*\*|\*[^*\n]+\*)/g)
     .filter(Boolean)
     .map((segment, index) => {
       if (segment.startsWith('**') && segment.endsWith('**')) {
@@ -51,8 +51,37 @@ function renderInlineText(text, keyPrefix) {
         );
       }
 
+      if (segment.startsWith('*') && segment.endsWith('*')) {
+        return (
+          <em key={`${keyPrefix}-em-${index}`} className="italic">
+            {segment.slice(1, -1)}
+          </em>
+        );
+      }
+
       return <span key={`${keyPrefix}-text-${index}`}>{segment}</span>;
     });
+}
+
+const ANALYSIS_HEADINGS = new Map(
+  [
+    'Bottom Line',
+    'Facts',
+    'Analysis',
+    'Final Conclusion',
+    'Authorities',
+    "Officer's position",
+    "User's position",
+    'How the cited cases apply',
+    'Legal significance',
+    'Practical considerations',
+    'Risks / strengths',
+    'Notes'
+  ].map((heading) => [heading.toLowerCase(), heading])
+);
+
+function normalizeAnalysisHeading(value) {
+  return ANALYSIS_HEADINGS.get(value.trim().toLowerCase()) || '';
 }
 
 function extractAnalysisSections(content) {
@@ -60,18 +89,35 @@ function extractAnalysisSections(content) {
   const sections = [];
   let currentSection = null;
   let paragraphBuffer = [];
+  let listBuffer = [];
 
   function flushParagraph() {
     if (!currentSection || paragraphBuffer.length === 0) {
       return;
     }
 
-    currentSection.paragraphs.push(paragraphBuffer.join(' '));
+    currentSection.blocks.push({
+      type: 'paragraph',
+      content: paragraphBuffer.join(' ')
+    });
     paragraphBuffer = [];
+  }
+
+  function flushList() {
+    if (!currentSection || listBuffer.length === 0) {
+      return;
+    }
+
+    currentSection.blocks.push({
+      type: 'list',
+      items: listBuffer
+    });
+    listBuffer = [];
   }
 
   function startSection(heading) {
     flushParagraph();
+    flushList();
 
     if (currentSection) {
       sections.push(currentSection);
@@ -79,24 +125,42 @@ function extractAnalysisSections(content) {
 
     currentSection = {
       heading,
-      paragraphs: [],
-      bullets: []
+      blocks: []
     };
   }
 
   lines.forEach((line) => {
     const trimmedLine = line.trim();
-    const headingMatch = trimmedLine.match(
-      /^#{0,2}\s*(Officer's position|User's position|How the cited cases apply|Authorities|Legal significance|Practical considerations|Risks \/ strengths|Notes)\s*:?\s*$/i
-    );
+    const headingMatch = trimmedLine.match(/^#{1,2}\s*(.+?)\s*:?\s*$/);
+    const heading = headingMatch ? normalizeAnalysisHeading(headingMatch[1]) : '';
 
-    if (headingMatch) {
-      startSection(headingMatch[1]);
+    if (heading) {
+      startSection(heading);
       return;
     }
 
     if (!trimmedLine) {
       flushParagraph();
+      flushList();
+      return;
+    }
+
+    const subheadingMatch =
+      trimmedLine.match(/^#{3,6}\s*(.+?)\s*:?\s*$/) ||
+      trimmedLine.match(/^(Authorities checked|Retrieved authorities):\s*$/i);
+
+    if (subheadingMatch) {
+      flushParagraph();
+      flushList();
+
+      if (!currentSection) {
+        startSection('Notes');
+      }
+
+      currentSection.blocks.push({
+        type: 'subheading',
+        content: subheadingMatch[1]
+      });
       return;
     }
 
@@ -107,9 +171,11 @@ function extractAnalysisSections(content) {
         startSection('Notes');
       }
 
-      currentSection.bullets.push(trimmedLine.replace(/^[-*]\s+/, ''));
+      listBuffer.push(trimmedLine.replace(/^[-*]\s+/, ''));
       return;
     }
+
+    flushList();
 
     if (!currentSection) {
       startSection('Notes');
@@ -119,6 +185,7 @@ function extractAnalysisSections(content) {
   });
 
   flushParagraph();
+  flushList();
 
   if (currentSection) {
     sections.push(currentSection);
@@ -187,26 +254,48 @@ function renderAnalysisContent(content) {
             {section.heading}
           </h3>
           <div className="mt-3 space-y-3 text-sm leading-7 text-ink">
-            {section.paragraphs.map((paragraph, paragraphIndex) => (
-              <p key={`${section.heading}-paragraph-${paragraphIndex}`}>
-                {renderInlineText(
-                  paragraph,
-                  `${section.heading}-paragraph-${paragraphIndex}`
-                )}
-              </p>
-            ))}
-            {section.bullets.length > 0 ? (
-              <ul className="list-disc space-y-2 pl-5">
-                {section.bullets.map((bullet, bulletIndex) => (
-                  <li key={`${section.heading}-bullet-${bulletIndex}`}>
+            {section.blocks.map((block, blockIndex) => {
+              if (block.type === 'subheading') {
+                return (
+                  <h4
+                    key={`${section.heading}-subheading-${blockIndex}`}
+                    className="pt-1 font-semibold text-sky-950"
+                  >
                     {renderInlineText(
-                      bullet,
-                      `${section.heading}-bullet-${bulletIndex}`
+                      block.content,
+                      `${section.heading}-subheading-${blockIndex}`
                     )}
-                  </li>
-                ))}
-              </ul>
-            ) : null}
+                  </h4>
+                );
+              }
+
+              if (block.type === 'list') {
+                return (
+                  <ul
+                    key={`${section.heading}-list-${blockIndex}`}
+                    className="list-disc space-y-2 pl-5"
+                  >
+                    {block.items.map((bullet, bulletIndex) => (
+                      <li key={`${section.heading}-bullet-${blockIndex}-${bulletIndex}`}>
+                        {renderInlineText(
+                          bullet,
+                          `${section.heading}-bullet-${blockIndex}-${bulletIndex}`
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                );
+              }
+
+              return (
+                <p key={`${section.heading}-paragraph-${blockIndex}`}>
+                  {renderInlineText(
+                    block.content,
+                    `${section.heading}-paragraph-${blockIndex}`
+                  )}
+                </p>
+              );
+            })}
           </div>
         </section>
       ))}
@@ -238,6 +327,14 @@ function retrievalLabel(status) {
   return 'Research metadata';
 }
 
+function verifiedSourceSummary(count) {
+  if (count === 1) {
+    return 'Verified 1 CourtListener source for this response.';
+  }
+
+  return `Verified ${count} CourtListener sources for this response.`;
+}
+
 function renderSourceCards(message) {
   const sources = Array.isArray(message.meta?.sources) ? message.meta.sources : [];
   const retrieval = message.meta?.retrieval;
@@ -253,13 +350,11 @@ function renderSourceCards(message) {
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-ink/60">
             {retrievalLabel(retrieval.status)}
           </p>
+          {sources.length > 0 ? <p className="mt-2">{verifiedSourceSummary(sources.length)}</p> : null}
           {retrieval.query ? (
             <p className="mt-2">
-              Query: <span className="font-medium text-ink">{retrieval.query}</span>
+              Research focus: <span className="font-medium text-ink">{retrieval.query}</span>
             </p>
-          ) : null}
-          {retrieval.queriedTypes?.length ? (
-            <p className="mt-2">Types searched: {retrieval.queriedTypes.join(', ')}</p>
           ) : null}
         </div>
       ) : null}

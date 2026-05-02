@@ -17,6 +17,7 @@ import {
 } from '../scenarios/catalog.js';
 import { getProviderAdapter, getProviderOptions, getProviderStatus } from '../providers/registry.js';
 import { HttpError } from '../utils/httpError.js';
+import { LegalRetrievalWorkflow } from './LegalRetrievalWorkflow.js';
 
 const SCENARIO_GENERATOR_CONTEXT = {
   id: 'scenario-generator',
@@ -111,15 +112,14 @@ function withStructuredAnalysisHeadings(text, { sources = [] } = {}) {
     .toLowerCase()
     .replace(/[’‘]/g, "'");
   const hasAllHeadings = [
-    "officer's position",
-    "user's position",
-    'how the cited cases apply',
-    'authorities',
-    'notes'
+    'bottom line',
+    'facts',
+    'analysis',
+    'final conclusion'
   ].every((heading) => lower.includes(heading));
 
   if (hasAllHeadings) {
-    return normalized;
+    return appendVerifiedAuthorityList(normalized, sources);
   }
 
   const authorityNotes = sources.length
@@ -133,23 +133,43 @@ function withStructuredAnalysisHeadings(text, { sources = [] } = {}) {
     : '- No CourtListener authorities were available for this analysis turn.';
 
   return [
-    '## Officer\'s position',
-    'The officer-side argument should be evaluated against the transcript facts, the retrieved authorities, and the combined explanation in Notes.',
+    '## Bottom Line',
+    'The model returned an unstructured analysis. Treat the following explanation as educational information and verify the cited authorities before relying on it.',
     '',
-    '## User\'s position',
-    'The user-side argument should be evaluated against the transcript facts, the retrieved authorities, and the combined explanation in Notes.',
+    '## Facts',
+    '- Review the roleplay transcript above as the factual record for this analysis.',
     '',
-    '## How the cited cases apply',
-    '- **Supports the officer if facts change:** retrieved authority may help the officer only when the transcript contains the legal threshold described by that authority.',
-    '- **Supports the user:** a clear refusal to consent preserves the argument that the search needs independent legal justification.',
-    '',
-    '## Authorities',
-    authorityNotes,
-    '',
-    '## Notes',
+    '## Analysis',
     normalized,
     '',
-    'This is educational information rather than legal advice.'
+    'Retrieved authorities:',
+    authorityNotes,
+    '',
+    '## Final Conclusion',
+    'This is educational information rather than legal advice. Check the cited CourtListener sources and the transcript facts before relying on the analysis.'
+  ].join('\n');
+}
+
+function appendVerifiedAuthorityList(text, sources) {
+  if (!Array.isArray(sources) || sources.length === 0) {
+    return text;
+  }
+
+  if (/^\s*(?:#{1,6}\s*)?(?:authorities|authorities checked|retrieved authorities)\s*:?\s*$/im.test(text)) {
+    return text;
+  }
+
+  const authorityLines = sources.map((source) => {
+    const citation = source.citations?.length ? `, ${source.citations.join('; ')}` : '';
+
+    return `- **${source.title}**${citation}`;
+  });
+
+  return [
+    text,
+    '',
+    'Authorities checked:',
+    ...authorityLines
   ].join('\n');
 }
 
@@ -220,6 +240,26 @@ function buildAnalysisResearchQuery({ scenario, transcript }) {
     .slice(0, 900);
 }
 
+function buildRetrievalMeta(retrieval) {
+  return {
+    status: retrieval.status,
+    queriedTypes: retrieval.queriedTypes,
+    query: retrieval.query,
+    ...(retrieval.issue ? { issue: retrieval.issue } : {}),
+    ...(retrieval.currentFocus ? { currentFocus: retrieval.currentFocus } : {}),
+    ...(retrieval.jurisdictionMode ? { jurisdictionMode: retrieval.jurisdictionMode } : {}),
+    ...(typeof retrieval.stateVariation === 'boolean'
+      ? { stateVariation: retrieval.stateVariation }
+      : {}),
+    ...(retrieval.jurisdictionNotes ? { jurisdictionNotes: retrieval.jurisdictionNotes } : {}),
+    ...(retrieval.strategy ? { strategy: retrieval.strategy } : {}),
+    ...(retrieval.analysisBlueprint ? { analysisBlueprint: retrieval.analysisBlueprint } : {}),
+    ...(typeof retrieval.candidateSourceCount === 'number'
+      ? { candidateSourceCount: retrieval.candidateSourceCount }
+      : {})
+  };
+}
+
 function parseJsonObjectFromText(text) {
   const normalized = text.trim();
   const fencedMatch = normalized.match(/```(?:json)?\s*([\s\S]*?)```/i);
@@ -243,6 +283,11 @@ export class SimulatorService {
     this.config = config;
     this.courtListenerService = courtListenerService;
     this.usageLogger = usageLogger;
+    this.legalRetrievalWorkflow = new LegalRetrievalWorkflow({
+      config,
+      courtListenerService,
+      usageLogger
+    });
   }
 
   getBootstrap() {
@@ -393,13 +438,27 @@ export class SimulatorService {
       (message) => message.channel !== TRANSCRIPT_CHANNELS.ANALYSIS
     );
     const retrieval = this.courtListenerService
-      ? await this.courtListenerService.retrieve({
+      ? await this.legalRetrievalWorkflow.retrieve({
+          adapter,
+          model: resolvedModel,
+          providerConfig: cleanedProviderConfig,
+          context: resolvedScenario,
+          transcript: analysisTranscript,
           userInput: buildAnalysisResearchQuery({
             scenario: resolvedScenario,
             transcript: analysisTranscript
           }),
           courtlistenerConfig,
-          sourceTypes: ['o']
+          sourceTypes: ['o'],
+          workspace: 'simulator-analysis',
+          generateText: ({ adapter: requestAdapter, request: workflowRequest }) =>
+            this.#generateTextWithUsageLogging({
+              adapter: requestAdapter,
+              request: workflowRequest,
+              scenarioId: resolvedScenario.id
+            }),
+          assertProviderReady: (requestAdapter, workflowRequest) =>
+            this.#assertProviderReady(requestAdapter, workflowRequest)
         })
       : EMPTY_RETRIEVAL;
 
@@ -442,11 +501,7 @@ export class SimulatorService {
         providerId: adapter.id,
         model: effectiveModel,
         purpose: 'analysis',
-        retrieval: {
-          status: retrieval.status,
-          queriedTypes: retrieval.queriedTypes,
-          query: retrieval.query
-        },
+        retrieval: buildRetrievalMeta(retrieval),
         sources: retrieval.sources
       }
     });

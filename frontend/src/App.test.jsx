@@ -229,27 +229,30 @@ describe('App', () => {
           role: 'assistant',
           channel: 'analysis',
           content: [
-            "## Officer's position",
-            'The officer can argue reasonable suspicion under **Terry v. Ohio**.',
+            '## Bottom Line',
+            'The backpack search likely fails on this record.',
             '',
-            "## User's position",
-            'The user can argue fidgeting and location alone do not create probable cause for a backpack search.',
+            '## Facts',
+            '- The user refused consent.',
+            '- The officer searched the backpack anyway.',
             '',
-            '## How the cited cases apply',
-            '- **Supports the user:** Terry requires more than a hunch before prolonging the stop.',
-            '- **Supports the officer if facts change:** Acevedo would matter only if probable cause developed for the vehicle or container.',
+            '## Analysis',
+            '### Backpack Search',
+            'The search lacked probable cause under **California v. Acevedo**.',
+            '- **Consent:** The user clearly refused.',
+            '- **Suppression:** The discovered evidence would likely be challenged.',
             '',
-            '## Authorities',
+            '## Final Conclusion',
+            'A court would likely suppress evidence from the backpack search.',
+            '',
+            'Authorities checked:',
             '- **Terry v. Ohio**, 392 U.S. 1.',
-            '- **California v. Acevedo**, 500 U.S. 565.',
-            '',
-            '## Notes',
-            'This is educational information.'
+            '- **California v. Acevedo**, 500 U.S. 565.'
           ].join('\n'),
           meta: {
             retrieval: {
               status: 'grounded',
-              queriedTypes: ['o'],
+              queriedTypes: ['o-case-name', 'o-keyword', 'o-citation-count'],
               query: 'Terry v. Ohio automobile exception traffic stop'
             },
             sources: [
@@ -444,12 +447,32 @@ describe('App', () => {
     await waitFor(() => {
       expect(analyzeScenario).toHaveBeenCalledTimes(1);
     });
-    expect(await screen.findByText(/Officer's position/i)).toBeInTheDocument();
-    expect(await screen.findByText(/How the cited cases apply/i)).toBeInTheDocument();
-    expect(await screen.findByText(/Supports the user/i)).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: /Bottom Line/i })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: /Facts/i })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: /Analysis/i })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: /Final Conclusion/i })).toBeInTheDocument();
+    expect(
+      await screen.findByRole('heading', { name: /^Backpack Search$/i, level: 4 })
+    ).toBeInTheDocument();
+    expect(await screen.findByText(/Suppression/i)).toBeInTheDocument();
     expect(await screen.findByText(/Grounded in CourtListener/i)).toBeInTheDocument();
-    expect(await screen.findAllByText(/California v\. Acevedo/i)).toHaveLength(2);
+    expect(await screen.findByText(/Verified 2 CourtListener sources/i)).toBeInTheDocument();
+    expect(await screen.findByText(/Research focus/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Types searched/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/o-case-name|o-keyword|o-citation-count/i)).not.toBeInTheDocument();
+    expect(await screen.findAllByText(/California v\. Acevedo/i)).toHaveLength(3);
     expect(await screen.findAllByRole('link', { name: /Read Full Case/i })).toHaveLength(2);
+
+    const articleText = screen
+      .getByRole('heading', { name: /Bottom Line/i })
+      .closest('article').textContent;
+
+    expect(articleText.indexOf('The user refused consent')).toBeLessThan(
+      articleText.indexOf('The search lacked probable cause')
+    );
+    expect(articleText.indexOf('A court would likely suppress')).toBeGreaterThan(
+      articleText.indexOf('The search lacked probable cause')
+    );
   });
 
   it('lets remote users use a server-configured provider without entering a browser API key', async () => {

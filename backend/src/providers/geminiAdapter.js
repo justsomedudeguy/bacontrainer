@@ -46,7 +46,9 @@ function toGeminiMessages(transcript, purpose) {
 }
 
 function resolveTemperature(purpose) {
-  return purpose === 'analysis' || purpose === 'legal-research' ? 0.35 : 0.65;
+  return ['analysis', 'legal-research', 'legal-planning', 'legal-selection'].includes(purpose)
+    ? 0.35
+    : 0.65;
 }
 
 function toGeminiSystemInstruction(systemPrompt) {
